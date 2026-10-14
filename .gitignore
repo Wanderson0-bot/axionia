@@ -1,0 +1,64 @@
+# ======================
+# Dependências
+# ======================
+node_modules/
+backend/.venv/
+backend/venv/
+.venv/
+venv/
+env/
+ENV/
+
+# ======================
+# Arquivos de ambiente e segredos
+# ======================
+.env
+.env.*
+backend/.env
+backend/.env.*
+*.local
+
+# ======================
+# Builds e caches
+# ======================
+dist/
+build/
+.vite/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ======================
+# Uploads e dados locais
+# ======================
+backend/uploads/
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# ======================
+# IDEs e sistema
+# ======================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ======================
+# Logs e temporários
+# ======================
+*.log
+logs/
+tmp/
+temp/
