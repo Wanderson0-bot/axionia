@@ -148,20 +148,70 @@ class Register(BaseModel):name:str=Field(min_length=1);email:str=Field(min_lengt
 class Login(BaseModel):email:str;password:str
 @router.post('/auth/register')
 def register(payload:Register):
- email=payload.email.lower().strip(); user_id=uuid4(); now=stamp(); current_workspace_id=None
- if payload.account_type not in ('individual','institution'): raise HTTPException(422,'Tipo de conta inválido.')
+ email=payload.email.lower().strip()
+ name=payload.name.strip()
+ user_id=uuid4()
+ now=stamp()
+
+ if payload.account_type not in ('individual','institution'):
+  raise HTTPException(422,'Tipo de conta invalido.')
+
  with conn() as d:
-  if d.execute('SELECT 1 FROM users WHERE email=%s',(email,)).fetchone(): raise HTTPException(409,'Este e-mail já está cadastrado.')
-  d.execute("INSERT INTO users(id,name,email,password_hash,status,created_at) VALUES(%s,%s,%s,%s,'active',%s)",(user_id,payload.name.strip(),email,hash_password(payload.password),now))
-  if payload.account_type == 'institution':
-   current_workspace_id=uuid4(); workspace_name=(payload.institution_name or 'Instituição')
-   d.execute("INSERT INTO institutions(id,name,type,created_by,created_at,updated_at) VALUES(%s,%s,'institution',%s,%s,%s)",(current_workspace_id,workspace_name,user_id,now,now))
-   membership_id=uuid4();d.execute("INSERT INTO memberships(id,user_id,institution_id,role,status,joined_at) VALUES(%s,%s,%s,'admin','active',%s)",(membership_id,user_id,current_workspace_id,now))
-   d.execute("INSERT INTO membership_permissions(id,membership_id,permission_id,granted_at) SELECT gen_random_uuid(),%s,id,%s FROM permissions WHERE legacy_only=FALSE",(membership_id,now))
-   plan_id=d.execute("SELECT id FROM plans WHERE name='free' AND active=TRUE").fetchone()
-   if plan_id:d.execute("INSERT INTO subscriptions(id,institution_id,plan_id,status,started_at) VALUES(%s,%s,%s,'active',%s)",(uuid4(),current_workspace_id,plan_id['id'],now))
-  token=secrets.token_urlsafe(32); d.execute('INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at) VALUES(%s,%s,%s,%s,%s)',(uuid4(),user_id,hashlib.sha256(token.encode()).hexdigest(),now+__import__('datetime').timedelta(days=30),now))
- return {'token':token,'user':{'id':str(user_id),'name':payload.name.strip(),'email':email,'current_workspace_id':str(current_workspace_id) if current_workspace_id else None,'account_type':payload.account_type,'plan':'free'}}
+  if d.execute('SELECT 1 FROM users WHERE email=%s',(email,)).fetchone():
+   raise HTTPException(409,'Este e-mail ja esta cadastrado.')
+
+  plan=d.execute("SELECT id FROM plans WHERE name='free' AND active=TRUE").fetchone()
+  if not plan:
+   raise HTTPException(503,'O plano Free nao esta configurado.')
+
+  d.execute(
+   "INSERT INTO users(id,name,email,password_hash,status,created_at) VALUES(%s,%s,%s,%s,'active',%s)",
+   (user_id,name,email,hash_password(payload.password),now),
+  )
+
+  current_workspace_id=uuid4()
+  membership_id=uuid4()
+  if payload.account_type == 'individual':
+   workspace_name=f'Espaco pessoal de {name}'
+   institution_type='personal'
+  else:
+   workspace_name=(payload.institution_name or '').strip() or 'Instituicao'
+   institution_type='institution'
+
+  d.execute(
+   "INSERT INTO institutions(id,name,type,created_by,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)",
+   (current_workspace_id,workspace_name,institution_type,user_id,now,now),
+  )
+  d.execute(
+   "INSERT INTO memberships(id,user_id,institution_id,role,status,joined_at) VALUES(%s,%s,%s,'admin','active',%s)",
+   (membership_id,user_id,current_workspace_id,now),
+  )
+  d.execute(
+   "INSERT INTO membership_permissions(id,membership_id,permission_id,granted_at) SELECT gen_random_uuid(),%s,id,%s FROM permissions WHERE legacy_only=FALSE",
+   (membership_id,now),
+  )
+  d.execute(
+   "INSERT INTO subscriptions(id,institution_id,plan_id,status,started_at) VALUES(%s,%s,%s,'active',%s)",
+   (uuid4(),current_workspace_id,plan['id'],now),
+  )
+
+  token=secrets.token_urlsafe(32)
+  d.execute(
+   'INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at) VALUES(%s,%s,%s,%s,%s)',
+   (uuid4(),user_id,hashlib.sha256(token.encode()).hexdigest(),now+__import__('datetime').timedelta(days=30),now),
+  )
+
+ return {
+  'token':token,
+  'user':{
+   'id':str(user_id),
+   'name':name,
+   'email':email,
+   'current_workspace_id':str(current_workspace_id),
+   'account_type':payload.account_type,
+   'plan':'free',
+  },
+ }
 @router.post('/auth/login')
 def login(payload:Login):
  with conn() as d:user=d.execute('SELECT * FROM users WHERE email=%s',(payload.email.lower().strip(),)).fetchone()
